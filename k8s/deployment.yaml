@@ -7,7 +7,7 @@ metadata:
     app: torchani-api
     component: api
 spec:
-  replicas: 1  # Start with 1 replica for GPU node
+  replicas: 1  # Only 1 GPU available
   selector:
     matchLabels:
       app: torchani-api
@@ -41,12 +41,12 @@ spec:
                   optional: true
           resources:
             requests:
-              memory: "4Gi"
-              cpu: "2"
+              memory: "2Gi"
+              cpu: "500m"
               nvidia.com/gpu: "1"  # Request 1 GPU
             limits:
-              memory: "8Gi"
-              cpu: "4"
+              memory: "4Gi"
+              cpu: "2"
               nvidia.com/gpu: "1"  # Limit to 1 GPU
           volumeMounts:
             - name: models
@@ -94,7 +94,7 @@ metadata:
     app: celery-worker
     component: worker
 spec:
-  replicas: 1  # Start with 1 GPU worker
+  replicas: 1  # Only 1 GPU available
   selector:
     matchLabels:
       app: celery-worker
@@ -130,12 +130,12 @@ spec:
                   optional: true
           resources:
             requests:
-              memory: "4Gi"
-              cpu: "2"
+              memory: "2Gi"
+              cpu: "500m"
               nvidia.com/gpu: "1"  # Request 1 GPU
             limits:
-              memory: "8Gi"
-              cpu: "4"
+              memory: "4Gi"
+              cpu: "2"
               nvidia.com/gpu: "1"  # Limit to 1 GPU
           volumeMounts:
             - name: models
