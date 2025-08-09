@@ -43,11 +43,11 @@ spec:
             requests:
               memory: "4Gi"
               cpu: "2"
-              nvidia.com/gpu: "1"  # Request 1 GPU
+              # nvidia.com/gpu: "1"  # Commented out until device plugin works
             limits:
               memory: "8Gi"
               cpu: "4"
-              nvidia.com/gpu: "1"  # Limit to 1 GPU
+              # nvidia.com/gpu: "1"  # Commented out until device plugin works
           volumeMounts:
             - name: models
               mountPath: /models
@@ -78,8 +78,9 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
             - matchExpressions:
-              - key: nvidia.com/gpu
-                operator: Exists
+              - key: gpu-available
+                operator: In
+                values: ["true"]
       tolerations:
         - key: nvidia.com/gpu
           operator: Exists
@@ -132,11 +133,11 @@ spec:
             requests:
               memory: "4Gi"
               cpu: "2"
-              nvidia.com/gpu: "1"
+              # nvidia.com/gpu: "1"  # Commented out until device plugin works
             limits:
               memory: "8Gi"
               cpu: "4"
-              nvidia.com/gpu: "1"
+              # nvidia.com/gpu: "1"  # Commented out until device plugin works
           volumeMounts:
             - name: models
               mountPath: /models
@@ -152,8 +153,9 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
             - matchExpressions:
-              - key: nvidia.com/gpu
-                operator: Exists
+              - key: gpu-available
+                operator: In
+                values: ["true"]
       tolerations:
         - key: nvidia.com/gpu
           operator: Exists
