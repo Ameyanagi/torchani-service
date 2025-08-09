@@ -18,6 +18,8 @@ spec:
         app: torchani-api
         component: api
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       containers:
         - name: api
           image: ghcr.io/ameyanagi/torchani-service:latest
@@ -103,6 +105,8 @@ spec:
         app: celery-worker
         component: worker
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       containers:
         - name: worker
           image: ghcr.io/ameyanagi/torchani-service:celery-latest
@@ -175,6 +179,8 @@ spec:
         app: celery-beat
         component: scheduler
     spec:
+      imagePullSecrets:
+        - name: ghcr-secret
       containers:
         - name: beat
           image: ghcr.io/ameyanagi/torchani-service:celery-latest
