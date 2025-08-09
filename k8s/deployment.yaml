@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: api
-          image: torchani-service:latest
+          image: ghcr.io/ameyanagi/torchani-service:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
@@ -105,7 +105,7 @@ spec:
     spec:
       containers:
         - name: worker
-          image: torchani-service:celery
+          image: ghcr.io/ameyanagi/torchani-service:celery-latest
           imagePullPolicy: Always
           command:
             - celery
@@ -177,7 +177,7 @@ spec:
     spec:
       containers:
         - name: beat
-          image: torchani-service:celery
+          image: ghcr.io/ameyanagi/torchani-service:celery-latest
           imagePullPolicy: Always
           command:
             - celery
