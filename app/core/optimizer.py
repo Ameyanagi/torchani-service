@@ -8,6 +8,7 @@ import ase.optimize
 import numpy as np
 import torch
 from rdkit import Chem
+from rdkit.Chem import AllChem
 
 from app.core.model_manager import model_manager
 
@@ -191,8 +192,8 @@ class MolecularOptimizer:
             raise ValueError(f"Invalid SMILES: {smiles}")
         
         mol = Chem.AddHs(mol)
-        Chem.EmbedMolecule(mol, randomSeed=42)
-        Chem.MMFFOptimizeMolecule(mol)
+        AllChem.EmbedMolecule(mol, randomSeed=42)
+        AllChem.MMFFOptimizeMolecule(mol)
         
         conf = mol.GetConformer()
         coords = conf.GetPositions()
