@@ -20,24 +20,21 @@ RUN apt-get update && apt-get install -y \
 
 # Install uv
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.cargo/bin:${PATH}"
+ENV PATH="/root/.local/bin:${PATH}"
 
 # Set working directory
 WORKDIR /app
 
-# Copy dependency files
-COPY pyproject.toml ./
+# Copy dependency files and app directory
+COPY pyproject.toml README.md ./
+COPY app ./app
 
 # Install Python dependencies
 RUN uv venv && \
-    . .venv/bin/activate && \
     uv pip install -e .
 
 # Production stage
 FROM base AS production
-
-# Copy application code
-COPY app ./app
 
 # Create non-root user
 RUN useradd -m -u 1000 torchani && \
