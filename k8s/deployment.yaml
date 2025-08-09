@@ -1,0 +1,205 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: torchani-api
+  namespace: torchani
+  labels:
+    app: torchani-api
+    component: api
+spec:
+  replicas: 1  # Start with 1 replica for GPU node
+  selector:
+    matchLabels:
+      app: torchani-api
+      component: api
+  template:
+    metadata:
+      labels:
+        app: torchani-api
+        component: api
+    spec:
+      containers:
+        - name: api
+          image: torchani-service:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 8000
+              name: http
+            - containerPort: 9090
+              name: metrics
+          envFrom:
+            - configMapRef:
+                name: torchani-config
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: torchani-secrets
+                  key: redis-password
+                  optional: true
+          resources:
+            requests:
+              memory: "4Gi"
+              cpu: "2"
+              nvidia.com/gpu: "1"  # Request 1 GPU
+            limits:
+              memory: "8Gi"
+              cpu: "4"
+              nvidia.com/gpu: "1"  # Limit to 1 GPU
+          volumeMounts:
+            - name: models
+              mountPath: /models
+            - name: results
+              mountPath: /results
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+      volumes:
+        - name: models
+          emptyDir: {}  # Use emptyDir for now, can change to PVC
+        - name: results
+          emptyDir: {}
+      # Schedule on nodes with GPU
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: nvidia.com/gpu
+                operator: Exists
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-worker
+  namespace: torchani
+  labels:
+    app: celery-worker
+    component: worker
+spec:
+  replicas: 1  # Start with 1 GPU worker
+  selector:
+    matchLabels:
+      app: celery-worker
+      component: worker
+  template:
+    metadata:
+      labels:
+        app: celery-worker
+        component: worker
+    spec:
+      containers:
+        - name: worker
+          image: torchani-service:celery
+          imagePullPolicy: Always
+          command:
+            - celery
+            - -A
+            - app.tasks
+            - worker
+            - --loglevel=info
+            - --concurrency=1  # 1 concurrent task per GPU
+          envFrom:
+            - configMapRef:
+                name: torchani-config
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: torchani-secrets
+                  key: redis-password
+                  optional: true
+          resources:
+            requests:
+              memory: "4Gi"
+              cpu: "2"
+              nvidia.com/gpu: "1"
+            limits:
+              memory: "8Gi"
+              cpu: "4"
+              nvidia.com/gpu: "1"
+          volumeMounts:
+            - name: models
+              mountPath: /models
+            - name: results
+              mountPath: /results
+      volumes:
+        - name: models
+          emptyDir: {}
+        - name: results
+          emptyDir: {}
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: nvidia.com/gpu
+                operator: Exists
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: celery-beat
+  namespace: torchani
+  labels:
+    app: celery-beat
+    component: scheduler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: celery-beat
+      component: scheduler
+  template:
+    metadata:
+      labels:
+        app: celery-beat
+        component: scheduler
+    spec:
+      containers:
+        - name: beat
+          image: torchani-service:celery
+          imagePullPolicy: Always
+          command:
+            - celery
+            - -A
+            - app.tasks
+            - beat
+            - --loglevel=info
+          envFrom:
+            - configMapRef:
+                name: torchani-config
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: torchani-secrets
+                  key: redis-password
+                  optional: true
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+      # Beat doesn't need GPU, can run on any node

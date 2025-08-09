@@ -1,0 +1,21 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: torchani-api
+  namespace: torchani
+  labels:
+    app: torchani-api
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+      protocol: TCP
+      name: http
+    - port: 9090
+      targetPort: 9090
+      protocol: TCP
+      name: metrics
+  selector:
+    app: torchani-api
+    component: api

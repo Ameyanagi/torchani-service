@@ -1,0 +1,199 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          
+          if [ -z "$PREV_TAG" ]; then
+            echo "No previous tag found, using all commits"
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          else
+            echo "Previous tag: $PREV_TAG"
+            COMMITS=$(git log --pretty=format:"- %s (%h)" --no-merges ${PREV_TAG}..HEAD)
+          fi
+          
+          # Create changelog
+          cat > CHANGELOG.md <<EOF
+          ## What's Changed
+          
+          ### Features and Improvements
+          $(echo "$COMMITS" | grep -E "^- (feat|feature|add|improve)" || echo "None")
+          
+          ### Bug Fixes
+          $(echo "$COMMITS" | grep -E "^- (fix|bugfix|patch)" || echo "None")
+          
+          ### Documentation
+          $(echo "$COMMITS" | grep -E "^- (docs|doc)" || echo "None")
+          
+          ### Other Changes
+          $(echo "$COMMITS" | grep -vE "^- (feat|feature|add|improve|fix|bugfix|patch|docs|doc)" || echo "None")
+          
+          ## Docker Images
+          
+          Pull the latest images:
+          \`\`\`bash
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+          docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}-celery
+          \`\`\`
+          
+          ## Deployment
+          
+          Update your Kubernetes manifests to use version \`${{ github.ref_name }}\`.
+          EOF
+          
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
+          cat CHANGELOG.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          body: ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: ${{ contains(github.ref, '-rc') || contains(github.ref, '-beta') || contains(github.ref, '-alpha') }}
+          generate_release_notes: true
+
+  build-release-images:
+    name: Build Release Images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest
+      
+      - name: Build and push multi-platform API image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+          target: production
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Build and push multi-platform Celery image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}-celery
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+          target: celery
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [create-release, build-release-images]
+    environment: production
+    
+    steps:
+      - name: Checkout ArgoCD manifests
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ github.repository_owner }}/k8s-manifests
+          token: ${{ secrets.ARGOCD_GITHUB_TOKEN }}
+          path: k8s-manifests
+      
+      - name: Update production manifests
+        run: |
+          cd k8s-manifests/apps/torchani-service/overlays/production
+          
+          # Update kustomization with new version
+          cat > kustomization.yaml <<EOF
+          apiVersion: kustomize.config.k8s.io/v1beta1
+          kind: Kustomization
+          
+          resources:
+            - ../../base
+          
+          images:
+            - name: torchani-service
+              newName: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+              newTag: ${{ github.ref_name }}
+            - name: torchani-service-celery
+              newName: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+              newTag: ${{ github.ref_name }}-celery
+          
+          replicas:
+            - name: torchani-api
+              count: 3
+            - name: celery-worker
+              count: 2
+          EOF
+      
+      - name: Commit and push
+        run: |
+          cd k8s-manifests
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add .
+          git commit -m "Deploy torchani-service ${{ github.ref_name }} to production"
+          git push
+      
+      - name: Trigger ArgoCD sync
+        run: |
+          curl -X POST https://argocd.example.com/api/v1/applications/torchani-service-prod/sync \
+            -H "Authorization: Bearer ${{ secrets.ARGOCD_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d '{
+              "revision": "main",
+              "prune": true,
+              "dryRun": false
+            }'

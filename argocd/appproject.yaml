@@ -1,0 +1,66 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: torchani
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: TorchANI GPU-optimized molecular optimization service
+  
+  # Source repositories
+  sourceRepos:
+    - https://github.com/Ameyanagi/k8s-manifests
+    - https://github.com/Ameyanagi/torchani-service
+  
+  # Destinations
+  destinations:
+    - namespace: torchani
+      server: https://kubernetes.default.svc
+    - namespace: torchani-staging
+      server: https://kubernetes.default.svc
+    - namespace: torchani-dev
+      server: https://kubernetes.default.svc
+  
+  # Cluster resource whitelist
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
+  
+  # Namespace resource whitelist
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  
+  # Roles
+  roles:
+    # Admin role
+    - name: admin
+      policies:
+        - p, proj:torchani:admin, applications, *, torchani/*, allow
+        - p, proj:torchani:admin, repositories, *, *, allow
+      groups:
+        - torchani-admins
+    
+    # Developer role
+    - name: developer
+      policies:
+        - p, proj:torchani:developer, applications, get, torchani/*, allow
+        - p, proj:torchani:developer, applications, sync, torchani/*, allow
+        - p, proj:torchani:developer, applications, action/*, torchani/*, allow
+        - p, proj:torchani:developer, logs, get, torchani/*, allow
+        - p, proj:torchani:developer, exec, create, torchani/*, allow
+      groups:
+        - torchani-developers
+    
+    # Viewer role
+    - name: viewer
+      policies:
+        - p, proj:torchani:viewer, applications, get, torchani/*, allow
+        - p, proj:torchani:viewer, logs, get, torchani/*, allow
+      groups:
+        - torchani-viewers
